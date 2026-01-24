@@ -1,0 +1,73 @@
+Below is a single production-style bash script that:
+
+Works on Ubuntu 24.04
+
+Installs containerd + Kubernetes v1.30
+
+Fixes the CPU preflight issue (documented, optional ignore)
+
+Runs master OR worker based on argument
+
+Prints join command automatically
+
+Prints setup details (author, OS, role)
+
+
+
+==========================
+
+
+✅ How to use
+chmod +x k8s-setup.sh
+
+On MASTER node
+./k8s-setup.sh master
+
+On WORKER node
+./k8s-setup.sh worker
+
+✅ What this script does
+
+✔ Ubuntu 24 validated
+✔ Swap disabled permanently
+✔ Kernel + sysctl configured
+✔ containerd installed & fixed (SystemdCgroup=true)
+✔ Kubernetes installed & held
+✔ Flannel installed (master only)
+✔ Join command printed (master)
+✔ Worker waits for join command
+
+🧠 CPU issue solution (included)
+
+Script checks CPU
+
+If CPU < 2 → prints warning
+
+Uses best practice (does NOT auto-ignore silently)
+
+You can override using environment variable
+
+IGNORE_CPU_CHECK=true ./k8s-setup.sh master
+
+
+
+=========================
+
+
+✅ After setup verification (Master)
+kubectl get nodes
+kubectl get pods -A
+
+🔥 Why this script is DevOps-grade
+
+Parameterized
+
+Safe checks
+
+Idempotent-friendly
+
+Clear logs
+
+Azure + Ubuntu 24 compatible
+
+Interview-ready explanation
