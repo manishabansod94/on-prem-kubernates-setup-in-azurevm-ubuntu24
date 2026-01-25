@@ -63,6 +63,12 @@ echo "🚀 Setting up SonarQube..."
 # Create persistent directories
 mkdir -p /opt/sonarqube/{data,extensions,logs}
 
+# 🔴 🔴 🔴 THIS IS THE CRITICAL FIX 🔴 🔴 🔴
+# SonarQube runs as UID 1000 inside the container
+chown -R 1000:1000 /opt/sonarqube
+chmod -R 775 /opt/sonarqube
+# 🔴 🔴 🔴 END OF FIX 🔴 🔴 🔴
+
 # Remove existing container if exists
 if docker ps -a | grep -q sonar; then
   echo "⚠ Existing SonarQube container found. Replacing it..."
@@ -86,7 +92,6 @@ echo
 echo " Default Login:"
 echo "   Username: admin"
 echo "   Password: admin"
-echo "in case of any sonar container is not up issue please run this command --> docker restart sonar"
-echo  
+echo
 echo " ⚠ You will be prompted to change password on first login"
 echo "======================================"
