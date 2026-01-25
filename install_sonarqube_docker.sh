@@ -86,6 +86,7 @@ echo
 echo " Default Login:"
 echo "   Username: admin"
 echo "   Password: admin"
-echo
+echo "in case of any sonar container is not up issue please run this command --> docker restart sonar"
+echo  
 echo " ⚠ You will be prompted to change password on first login"
 echo "======================================"
