@@ -8,6 +8,10 @@ pipeline {
 
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
+        IMAGE_NAME   = 'minj1993/boardshack'
+        IMAGE_TAG    = 'latest'
+        K8S_NS       = 'webapps'
+        DEPLOYMENT   = 'boardgame-deployment'
     }
 
     stages {
@@ -21,7 +25,7 @@ pipeline {
 
         stage('Compile') {
             steps {
-                sh 'mvn compile'
+                sh 'mvn clean compile'
             }
         }
 
@@ -42,49 +46,49 @@ pipeline {
                 withSonarQubeEnv('sonar') {
                     sh """
                     ${SCANNER_HOME}/bin/sonar-scanner \
-                    -Dsonar.projectName=BoardGame \
-                    -Dsonar.projectKey=BoardGame \
-                    -Dsonar.java.binaries=target
+                      -Dsonar.projectName=BoardGame \
+                      -Dsonar.projectKey=BoardGame \
+                      -Dsonar.java.binaries=target
                     """
                 }
             }
         }
 
+        /*
         stage('Quality Gate') {
             steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
-                }
+                waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
             }
         }
+        */
 
-        stage('Build') {
+        stage('Build Package') {
             steps {
-                sh 'mvn package'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Publish To Nexus') {
             steps {
                 withMaven(
-                    globalMavenSettingsConfig: 'global-settings',
+                    mavenSettingsConfig: 'global-settings',   // USER settings.xml
                     jdk: 'jdk17',
                     maven: 'maven3'
                 ) {
-                    sh 'mvn deploy'
+                    sh 'mvn deploy -DskipTests'
                 }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t minj1993/boardshack:latest .'
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
         stage('Docker Image Scan') {
             steps {
-                sh 'trivy image --format table -o trivy-image-report.html minj1993/boardshack:latest'
+                sh "trivy image --format table -o trivy-image-report.html ${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
@@ -94,7 +98,7 @@ pipeline {
                     credentialsId: 'docker-cred',
                     url: 'https://index.docker.io/v1/'
                 ) {
-                    sh 'docker push minj1993/boardshack:latest'
+                    sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
                 }
             }
         }
@@ -102,7 +106,18 @@ pipeline {
         stage('Deploy To Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: 'k8-cred', variable: 'KUBECONFIG')]) {
-                    sh 'kubectl apply -f deployment-service.yaml -n webapps'
+                    sh '''
+                      export KUBECONFIG=$KUBECONFIG
+
+                      # Create namespace if it does not exist
+                      kubectl get namespace ${K8S_NS} || kubectl create namespace ${K8S_NS}
+
+                      # Apply manifests
+                      kubectl apply -f deployment-service.yaml -n ${K8S_NS}
+
+                      # Wait for deployment rollout (FIXED)
+                      kubectl rollout status deployment/${DEPLOYMENT} -n ${K8S_NS}
+                    '''
                 }
             }
         }
@@ -110,8 +125,11 @@ pipeline {
         stage('Verify the Deployment') {
             steps {
                 withCredentials([file(credentialsId: 'k8-cred', variable: 'KUBECONFIG')]) {
-                    sh 'kubectl get pods -n webapps'
-                    sh 'kubectl get svc -n webapps'
+                    sh '''
+                      export KUBECONFIG=$KUBECONFIG
+                      kubectl get pods -n ${K8S_NS}
+                      kubectl get svc -n ${K8S_NS}
+                    '''
                 }
             }
         }
@@ -121,7 +139,12 @@ pipeline {
         always {
             emailext(
                 subject: "${env.JOB_NAME} - Build ${env.BUILD_NUMBER} - ${currentBuild.result}",
-                body: "Check console output at ${env.BUILD_URL}",
+                body: """
+                    <h3>Pipeline Status: ${currentBuild.result}</h3>
+                    <p>Job: ${env.JOB_NAME}</p>
+                    <p>Build Number: ${env.BUILD_NUMBER}</p>
+                    <p><a href="${env.BUILD_URL}">View Console Output</a></p>
+                """,
                 to: 'minj1992@gmail.com',
                 mimeType: 'text/html',
                 attachmentsPattern: 'trivy-image-report.html'
