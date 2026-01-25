@@ -92,5 +92,16 @@ echo " ✅ Nexus Installed Successfully"
 echo " URL: http://<SERVER_IP>:8081"
 echo
 echo " 🔑 Initial Admin Password:"
-cat /opt/nexus-data/admin.password
+echo "⏳ Waiting for Nexus to initialize..."
+
+for i in {1..30}; do
+  if [ -f /opt/nexus-data/admin.password ]; then
+    echo "✅ Nexus admin password:"
+    cat /opt/nexus-data/admin.password
+    break
+  fi
+  sleep 10
+done
+
+
 echo "======================================"
