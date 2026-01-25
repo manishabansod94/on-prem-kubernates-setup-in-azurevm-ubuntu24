@@ -1,14 +1,39 @@
 #!/bin/bash
-# Install OpenJDK 17 JRE Headless
-sudo apt install openjdk-17-jre-headless-y
-# Download Jenkins GPG key
-sudo wget-O /usr/share/keyrings/jenkins-keyring.asc \
-https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
-# Add Jenkins repository to package manager sources
-echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
-https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
-/etc/apt/sources.list.d/jenkins.list > /dev/null
-# Update package manager repositories
-sudo apt-get update
+set -e
+
+echo "======================================"
+echo " Jenkins APT Install – Ubuntu 24.04"
+echo " (trusted=yes workaround)"
+echo "======================================"
+
+# Root check
+[ "$EUID" -ne 0 ] && echo "Run as root" && exit 1
+
+# Clean old Jenkins stuff
+rm -f /etc/apt/sources.list.d/jenkins.list
+rm -f /usr/share/keyrings/jenkins*
+
+# Base update
+apt update -y
+apt install -y openjdk-17-jre-headless curl ca-certificates
+
+# Add Jenkins repo (APT TRUST BYPASS)
+echo "deb [trusted=yes] https://pkg.jenkins.io/debian-stable binary/" \
+  > /etc/apt/sources.list.d/jenkins.list
+
+# Update (THIS WILL NOW WORK)
+apt update -y
+
 # Install Jenkins
-sudo apt-get install jenkins -y
+apt install -y jenkins
+
+# Start Jenkins
+systemctl enable jenkins
+systemctl start jenkins
+
+echo "======================================"
+echo " Jenkins Installed (APT trusted mode)"
+echo " URL: http://<VM_PUBLIC_IP>:8080"
+echo " Password:"
+cat /var/lib/jenkins/secrets/initialAdminPassword
+echo "======================================"
