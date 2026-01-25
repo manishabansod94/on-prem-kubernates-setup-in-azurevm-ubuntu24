@@ -15,8 +15,7 @@ pipeline {
         stage('Git Checkout') {
             steps {
                 git branch: 'main',
-                    credentialsId: 'git-cred',
-                    url: 'https://github.com/ganeshperumal007/Boardgame.git'
+                    url: 'https://github.com/minj1992/Boardgame.git'
             }
         }
 
@@ -32,7 +31,7 @@ pipeline {
             }
         }
 
-        stage('File System Scan') {
+        stage('File System Scan (Trivy)') {
             steps {
                 sh 'trivy fs --format table -o trivy-fs-report.html .'
             }
@@ -45,7 +44,7 @@ pipeline {
                     ${SCANNER_HOME}/bin/sonar-scanner \
                     -Dsonar.projectName=BoardGame \
                     -Dsonar.projectKey=BoardGame \
-                    -Dsonar.java.binaries=.
+                    -Dsonar.java.binaries=target
                     """
                 }
             }
@@ -70,59 +69,47 @@ pipeline {
                 withMaven(
                     globalMavenSettingsConfig: 'global-settings',
                     jdk: 'jdk17',
-                    maven: 'maven3',
-                    traceability: true
+                    maven: 'maven3'
                 ) {
                     sh 'mvn deploy'
                 }
             }
         }
 
-        stage('Build & Tag Docker Image') {
+        stage('Build Docker Image') {
             steps {
-                script {
-                    withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
-                        sh 'docker build -t ganeshperumal007/boardshack:latest .'
-                    }
-                }
+                sh 'docker build -t minj1993/boardshack:latest .'
             }
         }
 
         stage('Docker Image Scan') {
             steps {
-                sh 'trivy image --format table -o trivy-image-report.html ganeshperumal007/boardshack:latest'
+                sh 'trivy image --format table -o trivy-image-report.html minj1993/boardshack:latest'
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                script {
-                    withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
-                        sh 'docker push ganeshperumal007/boardshack:latest'
-                    }
+                withDockerRegistry(
+                    credentialsId: 'docker-cred',
+                    url: 'https://index.docker.io/v1/'
+                ) {
+                    sh 'docker push minj1993/boardshack:latest'
                 }
             }
         }
 
         stage('Deploy To Kubernetes') {
             steps {
-                withKubeConfig(
-                    credentialsId: 'k8-cred',
-                    namespace: 'webapps',
-                    serverUrl: 'https://172.31.8.146:6443'
-                ) {
-                    sh 'kubectl apply -f deployment-service.yaml'
+                withCredentials([file(credentialsId: 'k8-cred', variable: 'KUBECONFIG')]) {
+                    sh 'kubectl apply -f deployment-service.yaml -n webapps'
                 }
             }
         }
 
         stage('Verify the Deployment') {
             steps {
-                withKubeConfig(
-                    credentialsId: 'k8-cred',
-                    namespace: 'webapps',
-                    serverUrl: 'https://172.31.8.146:6443'
-                ) {
+                withCredentials([file(credentialsId: 'k8-cred', variable: 'KUBECONFIG')]) {
                     sh 'kubectl get pods -n webapps'
                     sh 'kubectl get svc -n webapps'
                 }
@@ -132,37 +119,13 @@ pipeline {
 
     post {
         always {
-            script {
-                def jobName = env.JOB_NAME
-                def buildNumber = env.BUILD_NUMBER
-                def pipelineStatus = currentBuild.result ?: 'UNKNOWN'
-                def bannerColor = pipelineStatus == 'SUCCESS' ? 'green' : 'red'
-
-                def body = """
-                <html>
-                <body>
-                    <div style="border:4px solid ${bannerColor}; padding:10px;">
-                        <h3>${pipelineStatus}</h3>
-                    </div>
-                    <h2>${jobName} - Build ${buildNumber}</h2>
-                    <div style="background-color:${bannerColor}; padding:10px;">
-                        <h3 style="color:white;">Pipeline Status</h3>
-                        <p>Check the <a href="${BUILD_URL}">console output</a>.</p>
-                    </div>
-                </body>
-                </html>
-                """
-
-                emailext(
-                    subject: "${jobName} - Build ${buildNumber} ${pipelineStatus}",
-                    body: body,
-                    to: 'ganeshperumal882000@gmail.com',
-                    from: 'jenkins@example.com',
-                    replyTo: 'jenkins@example.com',
-                    mimeType: 'text/html',
-                    attachmentsPattern: 'trivy-image-report.html'
-                )
-            }
+            emailext(
+                subject: "${env.JOB_NAME} - Build ${env.BUILD_NUMBER} - ${currentBuild.result}",
+                body: "Check console output at ${env.BUILD_URL}",
+                to: 'minj1992@gmail.com',
+                mimeType: 'text/html',
+                attachmentsPattern: 'trivy-image-report.html'
+            )
         }
     }
 }
