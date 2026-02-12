@@ -1,0 +1,17 @@
+<settings>
+  <servers>
+
+    <server>
+      <id>maven-releases</id>
+      <username>admin</username>
+      <password>Login%12345</password>
+    </server>
+
+    <server>
+      <id>maven-snapshots</id>
+      <username>admin</username>
+      <password>Login%12345</password>
+    </server>
+
+  </servers>
+</settings>
