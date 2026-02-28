@@ -31,7 +31,7 @@ On WORKER node
 
 To reset the setup :
 
-./k8s-robust.sh reset
+./k8s-setup.sh reset
 
 ✅ What this script does
 
