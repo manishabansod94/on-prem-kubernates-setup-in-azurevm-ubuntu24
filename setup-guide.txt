@@ -20,11 +20,18 @@ Prints setup details (author, OS, role)
 ✅ How to use
 chmod +x k8s-setup.sh
 
-On MASTER node
+On primary MASTER node
 ./k8s-setup.sh master
+
+On secondary master node: 
+./k8s-robust.sh control-plane
 
 On WORKER node
 ./k8s-setup.sh worker
+
+To reset the setup :
+
+./k8s-robust.sh reset
 
 ✅ What this script does
 
