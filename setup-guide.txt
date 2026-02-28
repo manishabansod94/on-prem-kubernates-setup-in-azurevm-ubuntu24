@@ -24,7 +24,7 @@ On primary MASTER node
 ./k8s-setup.sh master
 
 On secondary master node: 
-./k8s-robust.sh control-plane
+./k8s-setup.sh control-plane
 
 On WORKER node
 ./k8s-setup.sh worker
