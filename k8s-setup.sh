@@ -2,37 +2,62 @@
 set -e
 
 ROLE="$1"
-AUTHOR="nishantminj"
 POD_CIDR="10.244.0.0/16"
 K8S_VERSION="v1.30"
+AUTHOR="Nishant Minj"
 
 if [[ -z "$ROLE" ]]; then
-  echo "Usage: $0 {master|worker}"
+  echo "Usage: $0 {master|worker|control-plane|reset}"
   exit 1
 fi
 
-echo "=============================================="
-echo " Kubernetes Setup Script"
-echo " Author     : $AUTHOR"
-echo " Role       : $ROLE"
-echo " OS         : $(lsb_release -ds)"
-echo " Date       : $(date)"
-echo "=============================================="
+echo "================================================"
+echo " Kubernetes Robust Setup Script"
+echo " Author : $AUTHOR"
+echo " Role   : $ROLE"
+echo "================================================"
 
-CPU_COUNT=$(nproc)
+############################################
+# AUTO DETECT PRIVATE IP
+############################################
+PRIVATE_IP=$(hostname -I | awk '{print $1}')
+CONTROL_PLANE_ENDPOINT="${PRIVATE_IP}:6443"
 
-if [[ "$CPU_COUNT" -lt 2 ]]; then
-  echo "⚠️ WARNING: CPU count is $CPU_COUNT (<2)"
-  if [[ "$IGNORE_CPU_CHECK" == "true" ]]; then
-    echo "⚠️ Ignoring CPU preflight check"
-    IGNORE_CPU_FLAG="--ignore-preflight-errors=NumCPU"
-  else
-    echo "❌ Kubernetes requires at least 2 vCPU"
-    echo "👉 Resize VM or re-run with:"
-    echo "   IGNORE_CPU_CHECK=true $0 $ROLE"
-    exit 1
-  fi
+############################################
+# FULL RESET
+############################################
+if [[ "$ROLE" == "reset" ]]; then
+
+  echo "👉 Performing FULL Kubernetes Reset"
+
+  sudo kubeadm reset -f || true
+  sudo systemctl stop kubelet || true
+
+  sudo rm -rf /etc/kubernetes
+  sudo rm -rf /var/lib/etcd
+  sudo rm -rf /var/lib/kubelet
+  sudo rm -rf /etc/cni/net.d
+  sudo rm -rf /var/lib/cni
+  sudo rm -rf ~/.kube
+
+  sudo iptables -F || true
+  sudo iptables -t nat -F || true
+  sudo iptables -t mangle -F || true
+
+  sudo ip link delete cni0 2>/dev/null || true
+  sudo ip link delete flannel.1 2>/dev/null || true
+
+  sudo apt-get purge -y kubeadm kubelet kubectl containerd.io || true
+  sudo apt-get autoremove -y || true
+
+  echo "✅ Full reset completed"
+  echo "⚠️ Reboot recommended"
+  exit 0
 fi
+
+############################################
+# COMMON INSTALLATION
+############################################
 
 echo "👉 Updating system"
 sudo apt-get update -y
@@ -42,7 +67,7 @@ echo "👉 Disabling swap"
 sudo swapoff -a
 sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
-echo "👉 Enabling kernel modules"
+echo "👉 Kernel configuration"
 sudo modprobe br_netfilter
 sudo tee /etc/sysctl.d/k8s.conf >/dev/null <<EOF
 net.bridge.bridge-nf-call-iptables=1
@@ -52,17 +77,18 @@ EOF
 sudo sysctl --system
 
 echo "👉 Installing containerd"
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
- | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo apt-get install -y containerd.io || {
+  sudo mkdir -p /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-echo \
-"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-| sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-sudo apt-get update -y
-sudo apt-get install -y containerd.io
+  sudo apt-get update -y
+  sudo apt-get install -y containerd.io
+}
 
 sudo mkdir -p /etc/containerd
 sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
@@ -70,7 +96,8 @@ sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/conf
 sudo systemctl restart containerd
 sudo systemctl enable containerd
 
-echo "👉 Installing Kubernetes ($K8S_VERSION)"
+echo "👉 Installing Kubernetes $K8S_VERSION"
+
 curl -fsSL https://pkgs.k8s.io/core:/stable:/${K8S_VERSION}/deb/Release.key \
  | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
@@ -83,11 +110,17 @@ sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 sudo systemctl enable --now kubelet
 
+############################################
+# MASTER (HA READY)
+############################################
 if [[ "$ROLE" == "master" ]]; then
-  echo "👉 Initializing Kubernetes MASTER"
+
+  echo "👉 Detected Private IP: $PRIVATE_IP"
+  echo "👉 Using Control Plane Endpoint: $CONTROL_PLANE_ENDPOINT"
+
   sudo kubeadm init \
     --pod-network-cidr=$POD_CIDR \
-    $IGNORE_CPU_FLAG
+    --control-plane-endpoint "$CONTROL_PLANE_ENDPOINT"
 
   mkdir -p $HOME/.kube
   sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -96,24 +129,38 @@ if [[ "$ROLE" == "master" ]]; then
   echo "👉 Installing Flannel CNI"
   kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
-  echo "👉 Generating join command"
-  kubeadm token create --print-join-command | tee join-command.sh
-
-  echo "=============================================="
-  echo " MASTER SETUP COMPLETE"
-  echo " Copy join-command.sh to worker nodes"
-  echo "=============================================="
-
-elif [[ "$ROLE" == "worker" ]]; then
-  echo "=============================================="
-  echo " WORKER NODE READY"
-  echo " Run the join command from master:"
   echo
-  echo " sudo kubeadm join <MASTER-IP>:6443 --token <token> \\"
-  echo "   --discovery-token-ca-cert-hash sha256:<hash>"
-  echo "=============================================="
+  echo "================================================"
+  echo "👉 Worker Join Command:"
+  echo "================================================"
+  WORKER_JOIN=$(kubeadm token create --print-join-command)
+  echo "$WORKER_JOIN"
+
+  echo
+  echo "================================================"
+  echo "👉 Control Plane Join Command:"
+  echo "================================================"
+  CERT_KEY=$(kubeadm init phase upload-certs --upload-certs | tail -1)
+  echo "$WORKER_JOIN --control-plane --certificate-key $CERT_KEY"
+  echo "================================================"
+
+############################################
+# WORKER NODE
+############################################
+elif [[ "$ROLE" == "worker" ]]; then
+
+  echo "👉 Worker node prepared successfully"
+  echo "👉 Run worker join command from master"
+
+############################################
+# SECONDARY CONTROL PLANE
+############################################
+elif [[ "$ROLE" == "control-plane" ]]; then
+
+  echo "👉 Secondary control-plane node prepared"
+  echo "👉 Run control-plane join command from master"
 
 else
-  echo "Invalid role: use master or worker"
+  echo "Invalid role. Use master | worker | control-plane | reset"
   exit 1
 fi
