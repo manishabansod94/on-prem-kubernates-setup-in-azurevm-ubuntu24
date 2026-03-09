@@ -1,0 +1,34 @@
+in master node create this fiel 
+steps1:
+vi kubeadm-config.yaml  
+
+paste the below content chnage the masternode private ip and publicip 
+kind: ClusterConfiguration
+apiServer:
+  certSANs:
+  - "3.143.222.26"        # <-- PUBLIC IP
+  - "172.31.17.143"       # Private IP
+  - "127.0.0.1"
+  - "localhost"
+  - "ip-172-31-17-143"
+
+
+2nd steps : run the belwo command 
+sudo kubeadm init phase certs apiserver --config kubeadm-config.yaml
+
+
+steps 3 : cert vlaidation 
+openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout | grep -A1 "Subject Alternative Name"  
+
+
+tep 4 :
+sudo systemctl restart kubelet
+
+
+
+
+final steps install open lence :
+
+and then  cat /root/.kube/config   --> coy the content then paste ion notepadd and save in any location and update the public ip and then open the opne lense --> brwose then load --> you will be able to sthe entire cluster component
+
+
