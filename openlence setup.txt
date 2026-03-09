@@ -20,6 +20,8 @@ apiServer:
 before step no.2  run this one :
 ==============================
 sudo mv /etc/kubernetes/pki/apiserver.key /etc/kubernetes/pki/apiserver.key.bak
+sudo mv /etc/kubernetes/pki/apiserver.crt /etc/kubernetes/pki/apiserver.crt.bak
+sudo mv /etc/kubernetes/pki/apiserver.key /etc/kubernetes/pki/apiserver.key.bak
 
 2.nd steps : run the belwo command 
 ===========================
