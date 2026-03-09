@@ -1,5 +1,6 @@
 in master node create this fiel 
 steps1:
+========
 vi kubeadm-config.yaml  
 
 paste the below content chnage the masternode private ip and publicip 
@@ -16,21 +17,29 @@ apiServer:
   - "ip-172-31-17-143"
 
 
-2nd steps : run the belwo command 
+before step no.2  run this one :
+==============================
+sudo mv /etc/kubernetes/pki/apiserver.key /etc/kubernetes/pki/apiserver.key.bak
+
+2.nd steps : run the belwo command 
+===========================
 sudo kubeadm init phase certs apiserver --config kubeadm-config.yaml
 
 
 steps 3 : cert vlaidation 
+=========================
 openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout | grep -A1 "Subject Alternative Name"  
 
 
-tep 4 :
+step 4 :
+========
 sudo systemctl restart kubelet
 
 
 
 
 final steps install open lence :
+============================
 
 and then  cat /root/.kube/config   --> coy the content then paste ion notepadd and save in any location and update the public ip and then open the opne lense --> brwose then load --> you will be able to sthe entire cluster component
 
